@@ -1,0 +1,183 @@
+﻿@page "/tickets"
+@rendermode InteractiveServer
+
+@using AzureHandsOn.Models
+@using AzureHandsOn.Services
+
+@inject TicketService TicketService
+@inject BlobStorageService BlobStorageService
+
+<PageTitle>Tickets</PageTitle>
+
+<h1>Support Tickets</h1>
+
+<h3>Add Ticket</h3>
+
+<EditForm Model="@newTicket" OnValidSubmit="@AddTicket">
+
+    <div class="mb-3">
+        <label>Customer</label>
+        <InputText class="form-control"
+                   @bind-Value="newTicket.CustomerName" />
+    </div>
+
+    <div class="mb-3">
+        <label>Subject</label>
+        <InputText class="form-control"
+                   @bind-Value="newTicket.Subject" />
+    </div>
+
+    <div class="mb-3">
+        <label>Description</label>
+        <InputTextArea class="form-control"
+                       @bind-Value="newTicket.Description" />
+    </div>
+
+    <div class="mb-3">
+        <label>Attachment</label>
+
+        <InputFile OnChange="@HandleFileSelected" />
+
+        @if (selectedFile != null)
+        {
+            <p>
+                Selected: @selectedFile.Name
+            </p>
+        }
+    </div>
+
+    <div class="mb-3">
+        <label>Priority</label>
+
+        <InputSelect class="form-control"
+                     @bind-Value="newTicket.Priority">
+
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+
+        </InputSelect>
+    </div>
+
+    <div class="mb-3">
+        <label>Status</label>
+
+        <InputSelect class="form-control"
+                     @bind-Value="newTicket.Status">
+
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Closed">Closed</option>
+
+        </InputSelect>
+    </div>
+
+    <button class="btn btn-primary" type="submit">
+        Add Ticket
+    </button>
+
+</EditForm>
+
+<hr />
+
+<h3>Existing Tickets</h3>
+
+@if (tickets == null)
+{
+    <p>Loading tickets...</p>
+}
+else if (tickets.Count == 0)
+{
+    <p>No tickets found.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Customer</th>
+                <th>Subject</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var ticket in tickets)
+            {
+                <tr>
+                    <td>@ticket.TicketId</td>
+                    <td>@ticket.CustomerName</td>
+                    <td>@ticket.Subject</td>
+                    <td>@ticket.Priority</td>
+                    <td>@ticket.Status</td>
+                    <td>@ticket.CreatedDate.ToString("dd-MMM-yyyy")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+
+    private IBrowserFile? selectedFile;
+    private List<Ticket>? tickets;
+
+    private Ticket newTicket = new()
+    {
+        Priority = "Medium",
+        Status = "Open"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTickets();
+    }
+
+    private async Task LoadTickets()
+    {
+        tickets = await TicketService.GetTicketsAsync();
+    }
+
+    private async Task AddTicket()
+    {
+        if (selectedFile != null)
+        {
+            const long maxFileSize = 5 * 1024 * 1024;
+
+            await using var stream =
+                selectedFile.OpenReadStream(maxFileSize);
+
+            var blobName =
+                await BlobStorageService.UploadAsync(
+                    stream,
+                    selectedFile.Name);
+
+            newTicket.AttachmentFileName =
+                selectedFile.Name;
+
+            newTicket.AttachmentBlobName =
+                blobName;
+        }
+
+        await TicketService.AddTicketAsync(newTicket);
+
+        newTicket = new Ticket
+        {
+            Priority = "Medium",
+            Status = "Open"
+        };
+
+        selectedFile = null;
+
+        await LoadTickets();
+    }
+
+    private void HandleFileSelected(
+    InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+    }
+}
